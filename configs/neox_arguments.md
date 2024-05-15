@@ -11,7 +11,7 @@ LR Scheduler Arguments
 
     Default = linear
 
-    
+    Learning rate decay function. Choose from 'constant', 'linear', 'cosine', 'exponential'.
 
 
 
