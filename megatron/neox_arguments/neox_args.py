@@ -95,6 +95,15 @@ class NeoXArgsParallelism(NeoXArgsTemplate):
     """
     flag to determine whether Megatron-style Sequence Parallelism (https://arxiv.org/abs/2205.05198)
     (Layernorm inputs and activations are sharded across model parallel group) will be used. Has no effect when model_parallel_size is 1.
+<<<<<<< HEAD
+=======
+    """
+
+    is_context_parallel: bool = False
+    """
+    flag to determine whether context parallelism is on - shouldn't be set by user, is automatically determined
+    according to context parallel size.
+>>>>>>> 4969683e (Add context parallelism support)
     """
 
     is_context_parallel: bool = False
