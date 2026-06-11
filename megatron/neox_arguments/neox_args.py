@@ -108,6 +108,12 @@ class NeoXArgsParallelism(NeoXArgsTemplate):
     Have one MoE layer every expert_interval layers
     """
 
+    is_context_parallel: bool = False
+    """
+    flag to determine whether context parallelism is on - shouldn't be set by user, is automatically determined
+    according to context parallel size.
+    """
+
 
 @dataclass
 class NeoXArgsModel(NeoXArgsTemplate):
