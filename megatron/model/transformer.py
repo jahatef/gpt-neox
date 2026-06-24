@@ -53,6 +53,13 @@ try:
 except ImportError:
     swiglu = None
 
+try:
+    from ringX_attn import local_attn_forward, local_attn_backward
+except ImportError:
+    local_attn_forward = None
+    local_attn_backward = None
+    print("no triton attention for xpu available.")
+
 from .utils import get_parallel_linear
 
 # flags required to enable jit fusion kernels
@@ -84,6 +91,185 @@ torch._C._jit_override_can_fuse_on_gpu(True)
                                      unmasked-attention-scores, attention-mask)
 """
 
+class LocalAttentionFunction(torch.autograd.Function):
+
+    @staticmethod
+    def forward(
+        ctx,
+        q,
+        k,
+        v,
+        softmax_scale,
+        dropout_p,
+        causal,
+        window_size,
+        alibi_slopes,
+        deterministic,
+        backend,
+    ):
+        out, softmax_lse = local_attn_forward(
+            q=q,
+            k=k,
+            v=v,
+            softmax_scale=softmax_scale,
+            dropout_p=dropout_p,
+            causal=causal,
+            window_size=window_size,
+            alibi_slopes=alibi_slopes,
+            deterministic=deterministic,
+            backend=backend,
+        )
+
+        ctx.save_for_backward(
+            q,
+            k,
+            v,
+            out,
+            softmax_lse,
+        )
+
+        ctx.softmax_scale = softmax_scale
+        ctx.dropout_p = dropout_p
+        ctx.causal = causal
+        ctx.window_size = window_size
+        ctx.alibi_slopes = alibi_slopes
+        ctx.deterministic = deterministic
+        ctx.backend = backend
+
+        print("q", q.shape, q.stride(), q.dtype, flush=True)
+        print("k", k.shape, k.stride(), k.dtype, flush=True)
+        print("v", v.shape, v.stride(), v.dtype, flush=True)
+        print("out", out.shape, out.stride(), out.dtype, flush=True)
+        print("lse", softmax_lse.shape, softmax_lse.dtype, flush=True)
+        print("dropout_p", dropout_p)
+        print("alibi_slopes", alibi_slopes)
+        print("deterministic", deterministic)
+
+        return out
+
+    @staticmethod
+    def backward(ctx, dout):
+        print("flash_qkv_backwards")
+        q, k, v, out, softmax_lse = ctx.saved_tensors
+        dout = dout.contiguous()
+
+        #dq, dk, dv = local_attn_backward(
+        print("q", q.shape, q.stride(), q.dtype, flush=True)
+        print("k", k.shape, k.stride(), k.dtype, flush=True)
+        print("v", v.shape, v.stride(), v.dtype, flush=True)
+        print("out", out.shape, out.stride(), out.dtype, flush=True)
+        print("dout", dout.shape, dout.stride(), dout.dtype, dout.is_contiguous(), flush=True)
+        print("lse", softmax_lse.shape, softmax_lse.dtype, flush=True)
+        print("scale", ctx.softmax_scale)
+        print("causal", ctx.causal)
+        print("window", ctx.window_size)
+        print(dout.stride())
+
+        dout2 = dout.contiguous()
+
+        print(dout2.stride())
+        print(dout2.data_ptr() == dout.data_ptr())
+        ret = local_attn_backward(
+            dout=dout.clone(),
+            q=q.contiguous(),
+            k=k.contiguous(),
+            v=v.contiguous(),
+            out=out.contiguous(),
+            softmax_lse=softmax_lse,
+            softmax_scale=ctx.softmax_scale,
+            dropout_p=ctx.dropout_p,
+            causal=ctx.causal,
+            window_size=ctx.window_size,
+            alibi_slopes=ctx.alibi_slopes,
+            deterministic=ctx.deterministic,
+            backend=ctx.backend,
+        )
+        print(f"ret type: {type(ret)}")
+        print(f"ret size: {ret.size()},\n dq: {dq}")
+        
+
+        return (
+            dq,     # q
+            dk,     # k
+            dv,     # v
+            None,   # softmax_scale
+            None,   # dropout_p
+            None,   # causal
+            None,   # window_size
+            None,   # alibi_slopes
+            None,   # deterministic
+            None,   # backend
+        )
+
+
+def fused_attention(
+    q,
+    k,
+    v,
+    softmax_scale=None,
+    dropout_p=0.0,
+    causal=False,
+    window_size=(-1, -1),
+    alibi_slopes=None,
+    deterministic=False,
+    backend=None,
+):
+    if softmax_scale is None:
+        softmax_scale = q.shape[-1] ** -0.5
+
+    return LocalAttentionFunction.apply(
+        q,
+        k,
+        v,
+        softmax_scale,
+        dropout_p,
+        causal,
+        window_size,
+        alibi_slopes,
+        deterministic,
+        backend,
+    )
+
+
+class FusedAttention(nn.Module):
+
+    def __init__(
+        self,
+        softmax_scale=None,
+        dropout_p=0.0,
+        causal=False,
+        window_size=(-1, -1),
+        alibi_slopes=None,
+        deterministic=False,
+        backend=None,
+    ):
+        super().__init__()
+
+        self.softmax_scale = softmax_scale
+        self.dropout_p = dropout_p
+        self.causal = causal
+        self.window_size = window_size
+        self.alibi_slopes = alibi_slopes
+        self.deterministic = deterministic
+        self.backend = backend
+
+    def forward(self, q, k, v):
+        scale = self.softmax_scale
+        if scale is None:
+            scale = q.shape[-1] ** -0.5
+
+        return fused_attention(
+            q=q,
+            k=k,
+            v=v,
+            softmax_scale=scale,
+            dropout_p=self.dropout_p,
+            causal=self.causal,
+            window_size=self.window_size,
+            alibi_slopes=self.alibi_slopes,
+            deterministic=self.deterministic,
+            backend=self.backend,
+        )
 
 class ParallelMLP(nn.Module):
     """MLP.
@@ -432,23 +618,27 @@ class ParallelSelfAttention(nn.Module):
                 # TODO: we no longer need to use flash_triton_fn since flash cuda supports alibi.
                 # consider adding OpenAI's more recent Flash-2 Triton kernel in future
                 # from https://github.com/openai/triton/blob/main/python/tutorials/06-fused-attention.py
-                from flash_attn.flash_attn_interface import (
-                    flash_attn_func,
-                    flash_attn_varlen_func,
-                )
-                from flash_attn.flash_attn_triton import (
-                    flash_attn_func as flash_attn_unpadded_unpacked_func_triton,
-                )
+                if torch.cuda.is_available():
+                    from flash_attn.flash_attn_interface import (
+                        flash_attn_func,
+                        flash_attn_varlen_func,
+                    )
+                    self.flash_triton_fn = flash_attn_unpadded_unpacked_func_triton
+                    self.flash_qkv_fn = flash_attn_func
+                    self.flash_varlen_qkv_fn = flash_attn_varlen_func
+                if torch.xpu.is_available():
+                    from ringX_attn import local_attn_forward 
+                    from ringX_attn import local_attn_backward 
+                    self.flash_triton_fn = fused_attention
+                    self.flash_qkv_fn = fused_attention
+                    #self.flash_varlen_qkv_fn = flash_attn_varlen_func
+                #from flash_attn.flash_attn_triton import (
+                #    flash_attn_func as flash_attn_unpadded_unpacked_func_triton,
+                #)
 
-                self.flash_triton_fn = flash_attn_unpadded_unpacked_func_triton
-                self.flash_qkv_fn = flash_attn_func
-                self.flash_varlen_qkv_fn = flash_attn_varlen_func
             elif self.use_ring_attention:
-                from ring_flash_attn.zigzag_ring_flash_attn import (
-                    zigzag_ring_flash_attn_func,
-                )
-
-                self.ring_attn_fn = zigzag_ring_flash_attn_func
+                from ringX_attn import ringX3_attn_func 
+                self.ring_attn_fn = ringX3_attn_func 
             else:
                 self.scale_mask_softmax = FusedScaleMaskSoftmax(
                     input_in_fp16=self.fp16,
@@ -480,6 +670,7 @@ class ParallelSelfAttention(nn.Module):
     def attention(
         self, query_layer, key_layer, value_layer, layer_past, attention_mask
     ):
+        #print(f"\n\n\nattention\n\n\n")
         # ===================================
         # Raw attention scores. [b, np, s, s]
         # ===================================
@@ -502,7 +693,7 @@ class ParallelSelfAttention(nn.Module):
             output_size[2],
             output_size[3],
             dtype=query_layer.dtype,
-            device=torch.cuda.current_device(),
+            device=torch.xpu.current_device(),
         )
 
         # Raw attention scores. [b * np, sq, sk]
@@ -660,15 +851,16 @@ class ParallelSelfAttention(nn.Module):
                 )
                 output = output.reshape(q_shape)
             else:
+                print("flash_qkv_fn")
                 output = self.flash_qkv_fn(
-                    query_layer,
-                    key_layer,
-                    value_layer,
+                    query_layer.contiguous(),
+                    key_layer.contiguous(),
+                    value_layer.contiguous(),
                     self.dropout_p if self.training else 0.0,
-                    softmax_scale=None,
                     causal=True,
                     **extra_kwargs,
                 )
+                #print(f"output: {output}")
 
             matmul_result = output
             # [b, sq, np, hn] -> [b, np, sq, hn]
@@ -769,6 +961,7 @@ class ParallelSelfAttention(nn.Module):
             )
             output = output.reshape(q_shape)
         else:
+
             output = self.ring_attn_fn(
                 query_layer,
                 key_layer,
@@ -982,6 +1175,8 @@ class ParallelSelfAttention(nn.Module):
             context_layer = self.sparse_attention(
                 query_layer, key_layer, value_layer, attention_mask
             )
+
+        #print(f"\n\ncontext_layer.size: {context_layer.size()}, \ncontext_layer: {context_layer}\n")
 
         # [b, np, sq, hn] --> [sq, b, np, hn]
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()

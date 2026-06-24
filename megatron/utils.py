@@ -53,13 +53,13 @@ def report_memory(name):
     """Simple GPU memory report."""
     mega_bytes = 1024.0 * 1024.0
     string = name + " memory (MB)"
-    string += " | allocated: {}".format(torch.cuda.memory_allocated() / mega_bytes)
+    string += " | allocated: {}".format(torch.xpu.memory_allocated() / mega_bytes)
     string += " | max allocated: {}".format(
-        torch.cuda.max_memory_allocated() / mega_bytes
+        torch.xpu.max_memory_allocated() / mega_bytes
     )
-    string += " | reserved: {}".format(torch.cuda.memory_reserved() / mega_bytes)
+    string += " | reserved: {}".format(torch.xpu.memory_reserved() / mega_bytes)
     string += " | max reserved: {}".format(
-        torch.cuda.max_memory_reserved() / mega_bytes
+        torch.xpu.max_memory_reserved() / mega_bytes
     )
     print_rank_0(string)
 
@@ -203,7 +203,7 @@ def obtain_resource_pool(
     resource_pool = fetch_hostfile(hostfile_path)
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
+        device_count = torch.xpu.device_count()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool["localhost"] = device_count
@@ -246,14 +246,14 @@ class Timer:
     def start(self):
         """Start the timer."""
         assert not self.started_, "timer has already been started"
-        torch.cuda.synchronize()
+        torch.xpu.synchronize()
         self.start_time = time.time()
         self.started_ = True
 
     def stop(self):
         """Stop the timer."""
         assert self.started_, "timer is not started"
-        torch.cuda.synchronize()
+        torch.xpu.synchronize()
         self.elapsed_ += time.time() - self.start_time
         self.started_ = False
 
@@ -420,7 +420,7 @@ def get_total_params(model):
     else:
         params = 0
 
-    total_n_parameters = torch.tensor([params]).cuda(torch.cuda.current_device())
+    total_n_parameters = torch.tensor([params]).xpu(torch.xpu.current_device())
     torch.distributed.all_reduce(total_n_parameters)
     total_n_parameters = total_n_parameters.item()
     return total_n_parameters

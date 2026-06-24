@@ -165,7 +165,7 @@ def _dmoe_gather(input_: torch.Tensor, tokens_per_expert: torch.Tensor):
         get_expert_token_counts_for_rank(tokens_per_expert, r)
         for r in range(world_size)
     ]
-    # print(f"{torch.cuda.current_device()}: tokens_by_rank {tokens_by_rank}")
+    # print(f"{torch.xpu.current_device()}: tokens_by_rank {tokens_by_rank}")
     tensor_list = [
         torch.empty(sum(r), input_.shape[-1], device=input_.device, dtype=input_.dtype)
         for r in tokens_by_rank
@@ -205,7 +205,7 @@ def _reduce_scatter_along_seq_dim(input_, seq_dim):
         # reduce_scatter_tensor is faster but only works correctly on dimension 0
         dim_size[seq_dim] = dim_size[seq_dim] // world_size
         output = torch.empty(
-            dim_size, dtype=input_.dtype, device=torch.cuda.current_device()
+            dim_size, dtype=input_.dtype, device=torch.xpu.current_device()
         )
         torch.distributed.reduce_scatter_tensor(
             output, input_.contiguous(), group=get_model_parallel_group()
@@ -243,7 +243,7 @@ def _gather_along_seq_dim(input_, seq_dim):
     if seq_dim == 0:
         # reduce_gather_tensor is faster but only works correctly on dimension 0
         output = torch.empty(
-            dim_size, dtype=input_.dtype, device=torch.cuda.current_device()
+            dim_size, dtype=input_.dtype, device=torch.xpu.current_device()
         )
         torch.distributed.all_gather_into_tensor(
             output, input_.contiguous(), group=get_model_parallel_group()

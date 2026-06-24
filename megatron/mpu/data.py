@@ -52,7 +52,7 @@ def _build_key_size_numel_dictionaries(keys, data):
             offset += max_dim
 
     # Move to GPU and broadcast.
-    sizes_cuda = torch.cuda.LongTensor(sizes)
+    sizes_cuda = torch.LongTensor(sizes).to("xpu")
     torch.distributed.broadcast(
         sizes_cuda, get_model_parallel_src_rank(), group=get_model_parallel_group()
     )
@@ -104,10 +104,10 @@ def broadcast_data(keys, data, datatype, zigzag=False):
         # Flatten the data associated with the keys
         flatten_data = torch.cat(
             [data[key].contiguous().view(-1) for key in keys], dim=0
-        ).cuda()
+        ).xpu()
     else:
         flatten_data = torch.empty(
-            total_numel, device=torch.cuda.current_device(), dtype=datatype
+            total_numel, device=torch.xpu.current_device(), dtype=datatype
         )
 
     # Broadcast

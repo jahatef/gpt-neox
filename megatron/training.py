@@ -1402,6 +1402,19 @@ def train_step_pipe(neox_args, timers, model, data_iterator):
     """Single training step with DeepSpeed's pipeline parallel engine."""
 
     assert neox_args.deepspeed
+    print(f"\n\n\n\n\nbatch: {next(data_iterator)}")
+    print("data_iterator type:", type(data_iterator), flush=True)
+
+    batch = next(iter(data_iterator))
+    print("batch type:", type(batch), flush=True)
+
+    if isinstance(batch, dict):
+        print("keys:", batch.keys(), flush=True)
+        for k, v in batch.items():
+            print(k, type(v), flush=True)
+    elif isinstance(batch, (tuple, list)):
+        for i, v in enumerate(batch):
+            print(i, type(v), flush=True)
     loss = model.train_batch(data_iter=data_iterator)
     loss_dict = {"lm_loss": loss}
     # Don't break Megatron's timers because we changed code paths.

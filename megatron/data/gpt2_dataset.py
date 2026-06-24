@@ -370,7 +370,8 @@ def _build_index_mappings(
     # This should be a barrier but nccl barrier assumes
     # device_index=rank which is not the case for model
     # parallel case
-    counts = torch.cuda.LongTensor([1])
+    counts = torch.LongTensor([1]).to("xpu")
+    print(f"counts: {counts}, group: {mpu.get_io_parallel_group()}")
     torch.distributed.all_reduce(counts, group=mpu.get_io_parallel_group())
     assert counts[0].item() == torch.distributed.get_world_size(
         group=mpu.get_io_parallel_group()

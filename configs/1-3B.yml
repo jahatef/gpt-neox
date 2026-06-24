@@ -2,8 +2,9 @@
 {
    # parallelism settings ( you will want to change these based on your cluster setup, ideally scheduling pipeline stages
    # across the node boundaries )
-   "pipe_parallel_size": 1,
+   "pipe_parallel_size": 0,
    "model_parallel_size": 1,
+   #"sequence_parallel": true,
 
    # model settings
    "num_layers": 24,
@@ -16,6 +17,7 @@
    "no_weight_tying": true,
    "gpt_j_residual": false,
    "output_layer_parallelism": "column",
+   "attention_config": [[["flash"],24]],
 
    # these should provide some speedup but takes a while to build, set to true if desired
    "scaled_upper_triang_masked_softmax_fusion": false,
@@ -50,7 +52,7 @@
   },
 
    # batch / data settings
-   "train_micro_batch_size_per_gpu": 4,
+   "train_micro_batch_size_per_gpu": 1,
    "data_impl": "mmap",
 
    # activation checkpointing
@@ -66,19 +68,16 @@
    "attention_dropout": 0,
 
    # precision settings
-   "fp16": {
-     "fp16": true,
-     "enabled": true,
-     "loss_scale": 0,
-     "loss_scale_window": 1000,
-     "hysteresis": 2,
-     "min_loss_scale": 1
-   },
+    "bf16": {
+       "enabled": true,
+       "bf16_master_weights_and_grads": true,
+       "bf16_optimizer_states": true
+    },
 
    # misc. training settings
-   "train_iters": 320000,
-   "lr_decay_iters": 320000,
-   "distributed_backend": "nccl",
+   "train_iters": 300,
+   "lr_decay_iters": 300,
+   "distributed_backend": "xccl",
    "lr_decay_style": "cosine",
    "warmup": 0.01,
    "checkpoint_factor": 10000,
@@ -87,7 +86,7 @@
 
    # logging
    "log_interval": 100,
-   "steps_per_print": 10,
+   "steps_per_print": 1,
    "keep_last_n_checkpoints": 4,
    "wall_clock_breakdown": true,
 }

@@ -587,7 +587,7 @@ def build_train_valid_test_data_loaders(neox_args):
         do_valid = valid_dataloader is not None and neox_args.eval_iters > 0
         do_test = test_dataloader is not None and neox_args.eval_iters > 0
         # Need to broadcast num_tokens and num_type_tokens.
-        flags = torch.cuda.LongTensor([int(do_train), int(do_valid), int(do_test)])
+        flags = torch.LongTensor([int(do_train), int(do_valid), int(do_test)]).to("xpu")
     elif mpu.get_model_parallel_rank() == 0 and pipe_load:
         # Number of train/valid/test samples.
         if neox_args.train_iters is not None:
@@ -717,9 +717,9 @@ def build_train_valid_test_data_loaders(neox_args):
             do_test = test_dataloader is not None and neox_args.eval_iters > 0
 
         # Need to broadcast num_tokens and num_type_tokens.
-        flags = torch.cuda.LongTensor([int(do_train), int(do_valid), int(do_test)])
+        flags = torch.LongTensor([int(do_train), int(do_valid), int(do_test)]).to("xpu")
     else:
-        flags = torch.cuda.LongTensor([0, 0, 0])
+        flags = torch.LongTensor([0, 0, 0]).to("xpu")
 
     # Broadcast num tokens.
     if neox_args.is_pipe_parallel:

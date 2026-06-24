@@ -1166,7 +1166,10 @@ class NeoXArgs(*BASE_CLASSES):
                 ), "Number of KV heads must be at least model_parallel_size for now!"
         # Flash attention version >=2.3.0 required to combine Flash + Sliding Window Attention
         if "flash" in self.attention_config:
-            _flash_version = packaging.version.Version(version("flash-attn"))
+            if torch.cuda.is_available():	
+               _flash_version = packaging.version.Version(version("flash-attn"))
+            elif torch.xpu.is_available():
+                _flash_version = packaging.version.Version(version("ringX_attn"))
             if self.sliding_window_width is not None:
                 assert _flash_version >= packaging.version.Version(
                     "2.3.0"
