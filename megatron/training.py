@@ -354,7 +354,9 @@ def pretrain(neox_args):
 
 def _get_batch(neox_args, tokenizer, keys, data, datatype, label_mask_zero=False):
     """Support function for get_batch / get_batch pipe (to avoid code repetition)"""
+    #print(f"RANK: {torch.distributed.get_rank()} At _get_batch, data: {data}, keys: {keys}")
     data_b = mpu.broadcast_data(keys, data, datatype)
+    #print(f"RANK: {torch.distributed.get_rank()} At _get_batch, data: {data}, keys: {keys}")
     token_key = keys[0]
     label_key = keys[1] if len(keys) > 1 else None
     # Unpack.
@@ -410,9 +412,14 @@ def get_batch(neox_args, data_iterator):
 
     # Broadcast data.
     if data_iterator is not None:
-        data = next(data_iterator)
+        try:
+            data = next(data_iterator)
+        except:
+            data = None
     else:
         data = None
+    if data == None:
+        pass #print(f"RANK: {torch.distributed.get_rank()}, data is None")
     if neox_args.train_impl == "normal":
         return _get_batch(
             neox_args=neox_args,
@@ -1205,6 +1212,8 @@ def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
             # config_params=neox_args.deepspeed_config,
             mpu=mpu if not neox_args.is_pipe_parallel else None,
         )
+        print("PAST DS INIT")
+
         if needs_reference_model:
             reference_model, _, _, _ = deepspeed.initialize(
                 model=reference_model,
@@ -1402,14 +1411,10 @@ def train_step_pipe(neox_args, timers, model, data_iterator):
     """Single training step with DeepSpeed's pipeline parallel engine."""
 
     assert neox_args.deepspeed
-    print(f"\n\n\n\n\nbatch: {next(data_iterator)}")
-    print("data_iterator type:", type(data_iterator), flush=True)
 
     batch = next(iter(data_iterator))
-    print("batch type:", type(batch), flush=True)
 
     if isinstance(batch, dict):
-        print("keys:", batch.keys(), flush=True)
         for k, v in batch.items():
             print(k, type(v), flush=True)
     elif isinstance(batch, (tuple, list)):

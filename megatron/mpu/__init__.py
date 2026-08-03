@@ -23,6 +23,10 @@ from .initialize import destroy_model_parallel
 from .initialize import get_data_parallel_group
 from .initialize import get_data_parallel_rank
 from .initialize import get_data_parallel_world_size
+from .initialize import get_io_parallel_group
+from .initialize import get_io_parallel_rank
+from .initialize import get_io_parallel_world_size
+from .initialize import get_io_parallel_src_rank
 from .initialize import get_model_parallel_group
 from .initialize import get_model_parallel_rank, set_model_parallel_rank
 from .initialize import get_model_parallel_src_rank, get_data_parallel_src_rank

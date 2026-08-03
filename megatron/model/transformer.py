@@ -135,46 +135,19 @@ class LocalAttentionFunction(torch.autograd.Function):
         ctx.alibi_slopes = alibi_slopes
         ctx.deterministic = deterministic
         ctx.backend = backend
-
-        print("q", q.shape, q.stride(), q.dtype, flush=True)
-        print("k", k.shape, k.stride(), k.dtype, flush=True)
-        print("v", v.shape, v.stride(), v.dtype, flush=True)
-        print("out", out.shape, out.stride(), out.dtype, flush=True)
-        print("lse", softmax_lse.shape, softmax_lse.dtype, flush=True)
-        print("dropout_p", dropout_p)
-        print("alibi_slopes", alibi_slopes)
-        print("deterministic", deterministic)
-
         return out
 
     @staticmethod
     def backward(ctx, dout):
-        print("flash_qkv_backwards")
         q, k, v, out, softmax_lse = ctx.saved_tensors
-        dout = dout.contiguous()
 
-        #dq, dk, dv = local_attn_backward(
-        print("q", q.shape, q.stride(), q.dtype, flush=True)
-        print("k", k.shape, k.stride(), k.dtype, flush=True)
-        print("v", v.shape, v.stride(), v.dtype, flush=True)
-        print("out", out.shape, out.stride(), out.dtype, flush=True)
-        print("dout", dout.shape, dout.stride(), dout.dtype, dout.is_contiguous(), flush=True)
-        print("lse", softmax_lse.shape, softmax_lse.dtype, flush=True)
-        print("scale", ctx.softmax_scale)
-        print("causal", ctx.causal)
-        print("window", ctx.window_size)
-        print(dout.stride())
 
-        dout2 = dout.contiguous()
-
-        print(dout2.stride())
-        print(dout2.data_ptr() == dout.data_ptr())
-        ret = local_attn_backward(
-            dout=dout.clone(),
-            q=q.contiguous(),
-            k=k.contiguous(),
-            v=v.contiguous(),
-            out=out.contiguous(),
+        dq, dk, dv = local_attn_backward(
+            dout=dout,
+            q=q,
+            k=k,
+            v=v,
+            out=out,
             softmax_lse=softmax_lse,
             softmax_scale=ctx.softmax_scale,
             dropout_p=ctx.dropout_p,
@@ -184,8 +157,6 @@ class LocalAttentionFunction(torch.autograd.Function):
             deterministic=ctx.deterministic,
             backend=ctx.backend,
         )
-        print(f"ret type: {type(ret)}")
-        print(f"ret size: {ret.size()},\n dq: {dq}")
         
 
         return (
@@ -851,7 +822,6 @@ class ParallelSelfAttention(nn.Module):
                 )
                 output = output.reshape(q_shape)
             else:
-                print("flash_qkv_fn")
                 output = self.flash_qkv_fn(
                     query_layer.contiguous(),
                     key_layer.contiguous(),

@@ -53,6 +53,7 @@ def _build_key_size_numel_dictionaries(keys, data):
 
     # Move to GPU and broadcast.
     sizes_cuda = torch.LongTensor(sizes).to("xpu")
+    print(f"RANK: {torch.distributed.get_rank()} entering mp broadcast")
     torch.distributed.broadcast(
         sizes_cuda, get_model_parallel_src_rank(), group=get_model_parallel_group()
     )
@@ -143,6 +144,8 @@ def zigzag_data(data, seq_dim=1):
     if worldsize == 1:
         return data
     # otherwise prepare for zigzagging
+    #print(f"worldsize, {worldsize}")
+    #print("data size, ", data.size())
     seq_chunks = torch.chunk(data, 2 * worldsize, dim=seq_dim)
     data = [
         torch.cat((seq_chunks[i], seq_chunks[-(i + 1)]), dim=seq_dim)

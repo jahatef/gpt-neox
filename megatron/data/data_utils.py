@@ -33,8 +33,11 @@ def make_data_loader(dataset, neox_args):
     if dataset is None:
         return None
     # Data parallel arguments.
-    world_size = mpu.get_data_parallel_world_size()
-    rank = mpu.get_data_parallel_rank()
+    #world_size = mpu.get_data_parallel_world_size()
+    #rank = mpu.get_data_parallel_rank()
+    world_size = mpu.get_io_parallel_world_size()
+    rank = mpu.get_io_parallel_rank()
+    #print(f"****make_data_loader: rank: {torch.distributed.get_rank()}, DPrank: {rank}, DPworld_size: {world_size}")
     global_batch_size = neox_args.batch_size * world_size
     num_workers = neox_args.num_workers
 
@@ -47,6 +50,11 @@ def make_data_loader(dataset, neox_args):
         rank=rank,
         world_size=world_size,
     )
+    it = iter(batch_sampler)
+    '''for i in range(3):
+        batch = next(it)
+        print(f"****make_data_loader: rank: {torch.distributed.get_rank()}, batch: {batch[:5]}, len: {len(batch)}")
+    '''
     # Torch dataloader.
     return torch.utils.data.DataLoader(
         dataset, batch_sampler=batch_sampler, num_workers=num_workers, pin_memory=True
@@ -522,6 +530,7 @@ def build_train_valid_test_data_loaders(neox_args):
         )
 
     validate_train_epochs(neox_args)
+    print(f"RANK: {torch.distributed.get_rank()} entering build_train_valid_test_data_loaders \n")
 
     (train_dataloader, valid_dataloader, test_dataloader) = (None, None, None)
 
@@ -721,6 +730,7 @@ def build_train_valid_test_data_loaders(neox_args):
     else:
         flags = torch.LongTensor([0, 0, 0]).to("xpu")
 
+    print(f"RANK: {torch.distributed.get_rank()} branch before flag broadcast, flags: {flags}")
     # Broadcast num tokens.
     if neox_args.is_pipe_parallel:
         # Only first/last pipeline stages have data loaders, so pipeline parallelism should
@@ -728,16 +738,21 @@ def build_train_valid_test_data_loaders(neox_args):
         torch.distributed.broadcast(flags, src=0)
     else:
         # The same data should be used for the model parallel and context parallel groups
+        print(f"RANK: {torch.distributed.get_rank()} entering flag broadcast, mp src: {mpu.get_model_parallel_src_rank()}, cp src: {mpu.get_context_parallel_src_rank()}")
+
         torch.distributed.broadcast(
             flags,
             mpu.get_model_parallel_src_rank(),
             group=mpu.get_model_parallel_group(),
         )
+        print(f"RANK: {torch.distributed.get_rank()} exiting mp flag broadcast")
+        print(f"RANK: {torch.distributed.get_rank()}, IORANK: {mpu.get_io_parallel_rank()} entering cp flag broadcast, flag: {flags}, mp src: {mpu.get_model_parallel_src_rank()}, io src: {mpu.get_io_parallel_src_rank()}")
         torch.distributed.broadcast(
             flags,
-            mpu.get_context_parallel_src_rank(),
-            group=mpu.get_context_parallel_group(),
+            src=mpu.get_io_parallel_src_rank(),
+            group=mpu.get_io_parallel_group(),
         )
+    print(f"RANK: {torch.distributed.get_rank()} exiting cp flag broadcast")
     neox_args.do_train = flags[0].item()
     neox_args.do_valid = flags[1].item()
     neox_args.do_test = flags[2].item()
@@ -754,6 +769,7 @@ def shift_and_wrap_data_loaders(neox_args, data_loaders, loop=True):
     train_dataloader = data_loaders["train"]
     valid_dataloader = data_loaders["valid"]
     test_dataloader = data_loaders["test"]
+    #print(f"****shift_and_wrap_data_loaders: rank {torch.distributed.get_rank()}, len(dataloader), {len(train_dataloader)}", flush=True)
 
     # Shift the start iterations.
     if train_dataloader is not None:
@@ -784,6 +800,7 @@ def shift_and_wrap_data_loaders(neox_args, data_loaders, loop=True):
             for x in data_loader:
                 yield x
             data_loader.start_iter = 0
+    
 
     # Build iterators.
     if train_dataloader is not None:
@@ -810,6 +827,7 @@ def shift_and_wrap_data_loaders(neox_args, data_loaders, loop=True):
     else:
         test_data_iterator = None
 
+    
     return train_data_iterator, valid_data_iterator, test_data_iterator
 
 

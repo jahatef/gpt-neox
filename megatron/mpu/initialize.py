@@ -110,14 +110,14 @@ def initialize_model_parallel(
         dp_groups = topology.get_axis_comm_lists("data")
         for dp_group in dp_groups:
             group = torch.distributed.new_group(ranks=dp_group)
-            if rank == 0:
-                print(f"MPU DP:", dp_group)
+            print(f"RANK: {rank}, MPU DP:", dp_group)
             if rank in dp_group:
                 _DATA_PARALLEL_GROUP = group
     else:
         dp_groups = []
         for i in range(model_parallel_size):
             ranks = range(i, world_size, model_parallel_size)
+            print(f"RANK: {rank}, MPU DP:", ranks)
             dp_groups.append(list(ranks))
             group = torch.distributed.new_group(ranks)
             if i == (rank % model_parallel_size):
@@ -129,7 +129,7 @@ def initialize_model_parallel(
         for pp_group in topology.get_axis_comm_lists("pipe"):
             group = torch.distributed.new_group(ranks=pp_group)
             if rank == 0:
-                print(f"MPU PP:", pp_group)
+                print(f"RANK: {rank}, MPU PP:", pp_group)
             if rank in pp_group:
                 _PIPE_PARALLEL_GROUP = group
 
@@ -143,14 +143,13 @@ def initialize_model_parallel(
             for group_rank in range(world_size):
                 group = torch.distributed.new_group(ranks=[group_rank])
                 if rank == 0:
-                    print(f"MPU MP:", [group_rank])
+                    print(f"RANK: {rank}, MPU MP:", [group_rank])
                 if rank == group_rank:
                     _MODEL_PARALLEL_GROUP = group
         for mp_group in topology.get_axis_comm_lists("model"):
             group = torch.distributed.new_group(ranks=mp_group)
-            if rank == 0:
-                print(f"MPU MP:", mp_group)
             if rank in mp_group:
+                print(f"MPU MP:", mp_group)
                 _MODEL_PARALLEL_GROUP = group
 
     else:
@@ -168,7 +167,10 @@ def initialize_model_parallel(
     for dp_group in dp_groups:
         for start in range(0, len(dp_group), context_parallel_size):
             ranks = [dp_group[i] for i in range(start, start + context_parallel_size)]
+            print(f"RANK: {rank}, MPU CP: {ranks}")
             group = torch.distributed.new_group(ranks)
+            if rank == 0:
+                print(f"MPU CP:", ranks)
             if rank in ranks:
                 _CONTEXT_PARALLEL_GROUP = group
 
@@ -183,7 +185,7 @@ def initialize_model_parallel(
             io_group.extend(topology.filter_match(pipe=stage, model=0))
         if rank == 0:
             print(f"MPU IO:", io_group)
-        group = torch.distributed.new_group(ranks=io_group)
+        group = jtorch.distributed.new_group(ranks=io_group)
         if rank in io_group:
             _IO_PARALLEL_GROUP = group
     else:
@@ -192,16 +194,26 @@ def initialize_model_parallel(
                 raise ValueError(
                     "Context parallel not tested with pipeline parallelism"
                 )
-            for dp_group in dp_groups:
-                for start in range(0, len(dp_group) // context_parallel_size):
-                    ranks = [
-                        dp_group[i]
-                        for i in range(start, len(dp_group), context_parallel_size)
-                    ]
-                    group = torch.distributed.new_group(ranks)
-                    if rank in ranks:
-                        _IO_PARALLEL_GROUP = group
+            '''for i in range(context_parallel_size):
+                ranks = range(i, world_size, context_parallel_size)
+                io_groups.append(list(ranks))
+                group = torch.distributed.new_group(ranks)
+                if i == (rank % context_parallel_size):
+                    _DATA_PARALLEL_GROUP = group'''
+            #remaining num ranks must be divisible by cp size
+            pp_factor = pipe_parallel_size if pipe_parallel_size > 0 else 1
+            dp_size = world_size//(model_parallel_size * context_parallel_size * pp_factor)
+            for i in range(world_size//dp_size):
+                cp_group = []
+                for dp_group_idx in range(len(dp_groups)):
+                    for cp_idx in range(i % context_parallel_size, len(dp_groups[dp_group_idx]),context_parallel_size):
+                        cp_group.append(dp_groups[dp_group_idx][cp_idx % context_parallel_size])
+                io_group = torch.distributed.new_group(ranks=cp_group)
+                if rank in cp_group:
+                    print("RANK: ", rank, " MPU IO: ", cp_group)
+                    _IO_PARALLEL_GROUP = io_group
         else:
+            print("io = dp group")
             _IO_PARALLEL_GROUP = _DATA_PARALLEL_GROUP
 
     global _FP32_ALLREDUCE
@@ -232,6 +244,16 @@ def get_io_parallel_group():
     """Get the IO parallel group the caller rank belongs to."""
     assert _IO_PARALLEL_GROUP is not None, "IO parallel group is not initialized"
     return _IO_PARALLEL_GROUP
+
+def get_io_parallel_world_size():
+    """Return world size for the data parallel group."""
+    return torch.distributed.get_world_size(
+        group=get_io_parallel_group()
+        )
+
+def get_io_parallel_rank():
+    """Return my rank for the data parallel group."""
+    return torch.distributed.get_rank(group=get_io_parallel_group())
 
 
 def get_context_parallel_group():
@@ -317,6 +339,12 @@ def get_data_parallel_src_rank():
             if global_rank in l:
                 return l[0]
 
+def get_io_parallel_src_rank():
+    """Calculate the global rank corresponding to a local rank zero
+    in the data parallel group."""
+    global_rank = torch.distributed.get_rank()
+    io_world_size = get_io_parallel_world_size()
+    return global_rank % (get_model_parallel_world_size() * get_pipe_parallel_world_size() * get_context_parallel_world_size())
 
 def get_data_parallel_world_size():
     """Return world size for the data parallel group."""
