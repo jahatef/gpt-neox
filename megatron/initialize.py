@@ -24,7 +24,7 @@ import numpy as np
 import torch
 
 from megatron import fused_kernels
-from megatron import mpu
+from megatron import mpu, device_backend
 from megatron.mpu import set_model_parallel_rank, set_model_parallel_world_size
 
 import deepspeed
@@ -41,7 +41,7 @@ def initialize_megatron(neox_args, allow_no_cuda=False):
     """
     if not allow_no_cuda:
         # Make sure cuda is available.
-        assert torch.cuda.is_available(), "Megatron requires CUDA."
+        assert device_backend.is_available(), "Megatron requires CUDA."
 
     # torch.distributed initialization
     def finish_mpu_init():
@@ -121,7 +121,7 @@ def setup_deepspeed_random_and_activation_checkpointing(neox_args):
 def _initialize_distributed(neox_args):
     """Initialize torch.distributed and mpu."""
 
-    device_count = torch.cuda.device_count()
+    device_count = device_backend.device_count()
     if torch.distributed.is_initialized():
 
         if neox_args.rank == 0:
@@ -146,7 +146,7 @@ def _initialize_distributed(neox_args):
                 ), "expected local-rank to be the same as rank % device-count."
             else:
                 neox_args.local_rank = device
-            torch.cuda.set_device(device)
+            device_backend.set_device(device)
 
         deepspeed.init_distributed(
             dist_backend=neox_args.distributed_backend,
@@ -219,7 +219,7 @@ def _set_random_seed(seed):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        if torch.cuda.device_count() > 0:
+        if device_backend.device_count() > 0:
             mpu.model_parallel_cuda_manual_seed(seed)
     else:
         raise ValueError("Seed ({}) should be a positive integer.".format(seed))

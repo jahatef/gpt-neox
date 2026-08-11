@@ -36,6 +36,7 @@ from deepspeed.launcher.runner import DLTS_HOSTFILE
 from megatron.logging import Tee
 from megatron.tokenizer import build_tokenizer
 from megatron.utils import obtain_resource_pool, expand_attention_types
+from megatron import device_backend
 from .deepspeed_args import NeoXArgsDeepspeedConfig, NeoXArgsDeepspeedRunner
 from .neox_args import (
     NeoXArgsModel,
@@ -905,7 +906,7 @@ class NeoXArgs(*BASE_CLASSES):
                 if self.num_gpus is not None and self.num_gpus > 0:
                     global_num_gpus = self.num_gpus * len(resources)
             else:
-                global_num_gpus = torch.cuda.device_count()
+                global_num_gpus = device_backend.device_count()
             self.update_value("global_num_gpus", global_num_gpus)
 
         logging.info(

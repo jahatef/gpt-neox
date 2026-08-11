@@ -27,7 +27,7 @@ from pkg_resources import packaging
 from importlib.metadata import version
 
 from .norms import get_norm
-from megatron import mpu
+from megatron import mpu, device_backend
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.activations import get_activation
 from megatron.model.utils import exists, get_fusion_type
@@ -495,7 +495,7 @@ class ParallelSelfAttention(nn.Module):
             output_size[2],
             output_size[3],
             dtype=query_layer.dtype,
-            device=torch.cuda.current_device(),
+            device=device_backend.current_device(),
         )
 
         # Raw attention scores. [b * np, sq, sk]

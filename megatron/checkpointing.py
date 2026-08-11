@@ -44,6 +44,7 @@ from glob import glob
 
 from megatron import mpu
 from megatron import print_rank_0
+from megatron import device_backend
 from megatron.utils import natural_sort
 from megatron.text_generation_utils import get_batch, forward_model
 from pathlib import Path
@@ -198,7 +199,7 @@ def save_ds_checkpoint(iteration, model, neox_args):
         sd["random_rng_state"] = random.getstate()
         sd["np_rng_state"] = np.random.get_state()
         sd["torch_rng_state"] = torch.get_rng_state()
-        sd["cuda_rng_state"] = torch.cuda.get_rng_state()
+        sd["cuda_rng_state"] = device_backend.get_rng_state()
         sd["rng_tracker_states"] = mpu.get_cuda_rng_tracker().get_states()
 
     if neox_args.checkpoint_validation_with_forward_pass:
@@ -465,7 +466,7 @@ def load_checkpoint(
             random.setstate(state_dict["random_rng_state"])
             np.random.set_state(state_dict["np_rng_state"])
             torch.set_rng_state(state_dict["torch_rng_state"])
-            torch.cuda.set_rng_state(state_dict["cuda_rng_state"])
+            device_backend.set_rng_state(state_dict["cuda_rng_state"])
             mpu.get_cuda_rng_tracker().set_states(state_dict["rng_tracker_states"])
         except KeyError:
             print_rank_0(

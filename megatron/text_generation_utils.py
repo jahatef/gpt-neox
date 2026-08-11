@@ -29,7 +29,7 @@ import torch
 import torch.nn.functional as F
 
 from megatron import print_rank_0
-from megatron import mpu
+from megatron import mpu, device_backend
 from megatron.utils import get_ltor_masks_and_position_ids, is_mp_rank_0
 from megatron.data.indexed_dataset import make_builder, make_dataset
 from megatron.mpu.mappings import gather_from_model_parallel_region
@@ -172,7 +172,7 @@ def forward_model(model, model_inputs, is_pipe_parallel=False) -> torch.Tensor:
 
 def broadcast_terminate_signal(terminate_runs: int):
     """Send signal to all workers to terminate if we've finished the process"""
-    terminate_runs_tensor = torch.cuda.LongTensor([terminate_runs])
+    terminate_runs_tensor = torch.LongTensor([terminate_runs]).to(device_backend.device())
     torch.distributed.broadcast(
         terminate_runs_tensor,
         mpu.get_model_parallel_src_rank(),
@@ -247,15 +247,15 @@ def stream_tokens(
     )
 
     # convert to tensor and broadcast
-    context_tokens = torch.cuda.LongTensor(context_tokens)
+    context_tokens = torch.LongTensor(context_tokens).to(device_backend.device())
     if stop_tokens:
         if len(stop_tokens) > 0 and type(stop_tokens[0]) is not list:
             stop_tokens = [stop_tokens]
         for i in range(0, len(stop_tokens)):
-            stop_tokens[i] = torch.cuda.LongTensor(stop_tokens[i])
+            stop_tokens[i] = torch.LongTensor(stop_tokens[i]).to(device_backend.device())
 
     # Make sure context tokens + start tokens are the same across all ranks
-    token_generation_start_index = torch.cuda.LongTensor(context_lengths)
+    token_generation_start_index = torch.LongTensor(context_lengths).to(device_backend.device())
     torch.distributed.broadcast(
         context_tokens,
         mpu.get_model_parallel_src_rank(),
@@ -921,10 +921,10 @@ def precompute_logits(neox_args, model):
             )
             # print(context_tokens)
             # convert to tensor and broadcast
-            context_tokens = torch.cuda.LongTensor(context_tokens)
-            label_tokens = torch.cuda.LongTensor(label_tokens)
+            context_tokens = torch.LongTensor(context_tokens).to(device_backend.device())
+            label_tokens = torch.LongTensor(label_tokens).to(device_backend.device())
             # Make sure context tokens + start tokens are the same across all ranks
-            token_generation_start_index = torch.cuda.LongTensor(context_lengths)
+            token_generation_start_index = torch.LongTensor(context_lengths).to(device_backend.device())
             torch.distributed.broadcast(
                 context_tokens,
                 mpu.get_model_parallel_src_rank(),
