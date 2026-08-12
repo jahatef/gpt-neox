@@ -46,7 +46,7 @@ def get_batch(neox_args, context_tokens: torch.Tensor):
     """
 
     # Move to GPU.
-    tokens = context_tokens.contiguous().cuda()
+    tokens = context_tokens.contiguous().to(device_backend.device())
     # Get the attention mask and position ids.
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(
         data=tokens,
@@ -289,10 +289,10 @@ def stream_tokens(
 
     with torch.no_grad():
         # initialize generation variables
-        state_is_done = torch.zeros([batch_size]).byte().cuda()
-        token_generation_end_index = torch.ones([batch_size]).long().cuda() * (-1)
+        state_is_done = torch.zeros([batch_size]).byte().to(device_backend.device())
+        token_generation_end_index = torch.ones([batch_size]).long().to(device_backend.device()) * (-1)
         generation_logits = (
-            torch.empty(maximum_tokens, neox_args.padded_vocab_size).float().cuda()
+            torch.empty(maximum_tokens, neox_args.padded_vocab_size).float().to(device_backend.device())
         )
 
         while token_index_to_generate <= last_token_index_to_generate:
@@ -360,7 +360,7 @@ def stream_tokens(
                 generated_tokens = (
                     generated_tokens
                     if logits is not None
-                    else torch.zeros(batch_size, dtype=torch.long).cuda()
+                    else torch.zeros(batch_size, dtype=torch.long).to(device_backend.device())
                 )
                 torch.distributed.broadcast(
                     tensor=generated_tokens,
@@ -970,7 +970,7 @@ def precompute_logits(neox_args, model):
                         if logits is not None
                         else torch.zeros(
                             neox_args.batch_size, dtype=torch.float32
-                        ).cuda()
+                        ).to(device_backend.device())
                     )
                     torch.distributed.broadcast(
                         tensor=logp,

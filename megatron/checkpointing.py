@@ -75,7 +75,7 @@ def do_forward_pass(neox_args, model, inference=False):
     context_tokens_tensor = (
         torch.arange(neox_args.seq_length + 1)
         .repeat((neox_args.train_micro_batch_size_per_gpu, 1))
-        .cuda()
+        .to(device_backend.device())
     )
 
     # forward

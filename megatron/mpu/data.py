@@ -98,7 +98,7 @@ def broadcast_data(keys, data, datatype):
         # Flatten the data associated with the keys
         flatten_data = torch.cat(
             [data[key].contiguous().view(-1) for key in keys], dim=0
-        ).cuda()
+        ).to(device_backend.device())
     else:
         flatten_data = torch.empty(
             total_numel, device=device_backend.current_device(), dtype=datatype
