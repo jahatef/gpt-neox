@@ -1076,11 +1076,13 @@ def get_optimizer(model, neox_args, dummy=False):
                     )
                     from deepspeed.ops.adam import FusedAdam as Adam
                 adam_optimizer = Adam
+                
         optimizer = adam_optimizer(
             param_groups,
             weight_decay=neox_args.weight_decay,
             **neox_args.optimizer["params"],
         )
+        print("created adam opt")
     elif neox_args.optimizer_type.lower() == "sgd":
         try:
             from mup import MuSGD

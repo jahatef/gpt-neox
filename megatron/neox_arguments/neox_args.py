@@ -67,6 +67,16 @@ class NeoXArgsParallelism(NeoXArgsTemplate):
     Size of the model parallelism.
     """
 
+    context_parallel_size: int = 1
+    """
+    Size of the context parallelism.
+    """
+
+    topology_order: list = None #['pipe', 'data', 'model', 'context']
+    """
+    Order of parallelism dimensions in the process topology.
+    """
+
     pipe_partition_method: str = "type:transformer|mlp"
     """
     method used to distribute model layers across pipeline stages. Choose from "parameters", which balances the number

@@ -921,10 +921,12 @@ class NeoXArgs(*BASE_CLASSES):
         pp_size = pp_size if pp_size >= 1 else 1
         mp_size = self.model_parallel_size
         mp_size = mp_size if mp_size >= 1 else 1
+        cp_size = self.context_parallel_size
+        cp_size = cp_size if cp_size >=1 else 1
         self.update_value("model_parallel_size", mp_size)
 
         # pp_size and mp_size are only used here to compute dp world size and nowhere else.
-        dp_world_size = (global_num_gpus / pp_size) / mp_size
+        dp_world_size = ((global_num_gpus / pp_size) / mp_size) / cp_size
         if not (dp_world_size % 1 == 0):
             error_message = (
                 f"{ERROR}"
